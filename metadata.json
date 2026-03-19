@@ -1,0 +1,5 @@
+{
+  "name": "Thử thách cùng AI - Toán Học Nhí",
+  "description": "Ứng dụng luyện tập bảng nhân thông minh với AI, hỗ trợ nhận diện giọng nói và yêu cầu giải thích tư duy cho học sinh lớp 3.",
+  "requestFramePermissions": ["microphone"]
+}

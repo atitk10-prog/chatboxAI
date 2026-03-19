@@ -246,13 +246,15 @@ export function getRandomQuestions(topicId: string, count: number): Question[] {
     // Shuffle mỗi nhóm
     const shuffle = (arr: Question[]) => [...arr].sort(() => Math.random() - 0.5);
 
-    // Chọn câu ưu tiên đáp án khác nhau
+    // Set CHUNG cho tất cả nhóm — đáp án đã dùng sẽ không lặp
+    const usedAnswers = new Set<number>();
+
+    // Chọn câu ưu tiên đáp án khác nhau (dùng chung usedAnswers)
     const pickUnique = (pool: Question[], needed: number): Question[] => {
         const shuffled = shuffle(pool);
         const picked: Question[] = [];
-        const usedAnswers = new Set<number>();
 
-        // Vòng 1: chọn câu có đáp án chưa dùng
+        // Vòng 1: chọn câu có đáp án chưa dùng (kể cả ở nhóm khác)
         for (const q of shuffled) {
             if (picked.length >= needed) break;
             if (!usedAnswers.has(q.answer)) {
@@ -261,12 +263,13 @@ export function getRandomQuestions(topicId: string, count: number): Question[] {
             }
         }
 
-        // Vòng 2: nếu chưa đủ, cho phép trùng đáp án
+        // Vòng 2: nếu chưa đủ, cho phép trùng nhưng ưu tiên đáp án ít trùng nhất
         if (picked.length < needed) {
             for (const q of shuffled) {
                 if (picked.length >= needed) break;
                 if (!picked.includes(q)) {
                     picked.push(q);
+                    usedAnswers.add(q.answer);
                 }
             }
         }
@@ -279,6 +282,7 @@ export function getRandomQuestions(topicId: string, count: number): Question[] {
     const hardCount = Math.max(1, Math.round(count * 0.3));
     const mediumCount = count - easyCount - hardCount;
 
+    // Chọn theo thứ tự: easy → medium → hard (usedAnswers tích lũy)
     const selected = [
         ...pickUnique(easy, easyCount),
         ...pickUnique(medium, mediumCount),

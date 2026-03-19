@@ -1,11 +1,18 @@
 /**
- * Vietnamese TTS Service - Google Translate TTS
- * Proxy qua Vite dev server (/api/tts)
+ * Vietnamese TTS Service
+ * PC: Google Translate TTS (qua /api/tts proxy)
+ * Mobile: Web Speech API (speechSynthesis) — không bị chặn autoplay
  */
 
 const MAX_CHUNK_LENGTH = 80;
 const CHUNK_DELAY = 300;
-const CHUNK_TIMEOUT = 15000; // 15s timeout per chunk
+const CHUNK_TIMEOUT = 15000;
+
+// Detect mobile device
+const isMobile = (): boolean => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        || (navigator.maxTouchPoints > 0 && window.innerWidth < 768);
+};
 
 function splitTextIntoChunks(text: string): string[] {
     let cleanText = text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
@@ -44,8 +51,6 @@ export class VietnameseTTS {
     private isPlaying = false;
     private stopRequested = false;
     private currentAudio: HTMLAudioElement | null = null;
-    // Generation counter: mỗi lần speak() được gọi, tăng lên 1
-    // Nếu generation thay đổi giữa chừng → chunk cũ tự cancel
     private generation = 0;
 
     private buildUrl(chunk: string): string {
@@ -53,9 +58,9 @@ export class VietnameseTTS {
         return `/api/tts?ie=UTF-8&tl=vi&client=tw-ob&q=${encoded}&_t=${Date.now()}`;
     }
 
-    private playChunk(chunk: string, gen: number, retries = 2): Promise<boolean> {
+    // ── PC: Google Translate TTS via <audio> element ──
+    private playChunkPC(chunk: string, gen: number, retries = 2): Promise<boolean> {
         return new Promise(resolve => {
-            // Nếu generation đã thay đổi → skip chunk này
             if (this.stopRequested || this.generation !== gen) {
                 resolve(false);
                 return;
@@ -85,7 +90,7 @@ export class VietnameseTTS {
                 clearTimeout(timeout);
                 if (retries > 0 && !this.stopRequested && this.generation === gen) {
                     if (this.currentAudio === audio) this.currentAudio = null;
-                    setTimeout(() => this.playChunk(chunk, gen, retries - 1).then(resolve), 500);
+                    setTimeout(() => this.playChunkPC(chunk, gen, retries - 1).then(resolve), 500);
                 } else {
                     console.warn('TTS failed:', chunk.substring(0, 30));
                     done(false);
@@ -96,7 +101,7 @@ export class VietnameseTTS {
                 clearTimeout(timeout);
                 if (retries > 0 && !this.stopRequested && this.generation === gen) {
                     if (this.currentAudio === audio) this.currentAudio = null;
-                    setTimeout(() => this.playChunk(chunk, gen, retries - 1).then(resolve), 500);
+                    setTimeout(() => this.playChunkPC(chunk, gen, retries - 1).then(resolve), 500);
                 } else {
                     done(false);
                 }
@@ -104,35 +109,71 @@ export class VietnameseTTS {
         });
     }
 
+    // ── Mobile: Web Speech API (speechSynthesis) ──
+    private playChunkMobile(chunk: string, gen: number): Promise<boolean> {
+        return new Promise(resolve => {
+            if (this.stopRequested || this.generation !== gen) {
+                resolve(false);
+                return;
+            }
+
+            if (!('speechSynthesis' in window)) {
+                console.warn('speechSynthesis not supported');
+                resolve(false);
+                return;
+            }
+
+            const utterance = new SpeechSynthesisUtterance(chunk);
+            utterance.lang = 'vi-VN';
+            utterance.rate = 0.9;
+            utterance.pitch = 1.1;
+
+            // Tìm voice tiếng Việt nếu có
+            const voices = speechSynthesis.getVoices();
+            const viVoice = voices.find(v => v.lang.startsWith('vi'));
+            if (viVoice) utterance.voice = viVoice;
+
+            const timeout = setTimeout(() => {
+                speechSynthesis.cancel();
+                resolve(false);
+            }, CHUNK_TIMEOUT);
+
+            utterance.onend = () => { clearTimeout(timeout); resolve(true); };
+            utterance.onerror = () => { clearTimeout(timeout); resolve(false); };
+
+            speechSynthesis.speak(utterance);
+        });
+    }
+
     async speak(text: string, onStart?: () => void, onEnd?: () => void): Promise<void> {
-        // Always stop previous before starting new
         this.stop();
         if (!text?.trim()) { onEnd?.(); return; }
 
-        // Small gap to let previous audio fully release
         await new Promise(r => setTimeout(r, 50));
 
-        // Bắt đầu generation mới
         const gen = ++this.generation;
         this.isPlaying = true;
         this.stopRequested = false;
         onStart?.();
+
+        const useMobile = isMobile();
+        console.log(`🔊 TTS [${useMobile ? 'Mobile/SpeechAPI' : 'PC/GoogleTTS'}]`);
 
         try {
             const chunks = splitTextIntoChunks(text);
             console.log(`🔊 TTS: ${chunks.length} chunks for: "${text.substring(0, 50)}..."`);
 
             for (let i = 0; i < chunks.length; i++) {
-                // Check cả stopRequested VÀ generation
                 if (this.stopRequested || this.generation !== gen) {
-                    console.log('🔇 TTS stopped (gen mismatch or stop requested)');
+                    console.log('🔇 TTS stopped');
                     break;
                 }
 
-                const success = await this.playChunk(chunks[i], gen);
+                const success = useMobile
+                    ? await this.playChunkMobile(chunks[i], gen)
+                    : await this.playChunkPC(chunks[i], gen);
                 console.log(`  chunk ${i + 1}/${chunks.length}: ${success ? '✅' : '❌'}`);
 
-                // Delay between chunks
                 if (i < chunks.length - 1 && !this.stopRequested && this.generation === gen) {
                     await new Promise(r => setTimeout(r, CHUNK_DELAY));
                 }
@@ -140,7 +181,6 @@ export class VietnameseTTS {
         } catch (e) {
             console.error('TTS error:', e);
         } finally {
-            // Chỉ cập nhật state nếu vẫn là generation hiện tại
             if (this.generation === gen) {
                 this.isPlaying = false;
             }
@@ -148,10 +188,6 @@ export class VietnameseTTS {
         }
     }
 
-    /**
-     * speakAsync - Giống speak() nhưng trả về Promise
-     * Dùng cho sequential TTS: await speakAsync("lời khen") → await speakAsync("câu hỏi")
-     */
     speakAsync(text: string): Promise<void> {
         return new Promise<void>((resolve) => {
             this.speak(text, undefined, () => resolve());
@@ -160,8 +196,9 @@ export class VietnameseTTS {
 
     stop(): void {
         this.stopRequested = true;
-        // Tăng generation để cancel tất cả chunk đang pending
         this.generation++;
+
+        // Stop PC audio
         if (this.currentAudio) {
             try {
                 this.currentAudio.onended = null;
@@ -170,6 +207,12 @@ export class VietnameseTTS {
             } catch { }
             this.currentAudio = null;
         }
+
+        // Stop Mobile speechSynthesis
+        if ('speechSynthesis' in window) {
+            try { speechSynthesis.cancel(); } catch { }
+        }
+
         this.isPlaying = false;
     }
 

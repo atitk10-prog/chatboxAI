@@ -354,56 +354,61 @@ export default function App() {
 
     const isCorrect = checkAnswer(userText, currentQ.answer);
 
+    // ── Tính toán response NGAY LẬP TỨC (trước setTimeout) ──
+    // Snapshot state hiện tại để tránh race condition
+    const curHearts = isCorrect ? state.hearts : state.hearts - 1;
+    const nextIdx = isCorrect ? state.currentQIndex + 1 : state.currentQIndex;
+
+    let praiseMsg = '';
+    let questionMsg = '';
+    let fullMsg = '';
+    let newStep = 'PLAYING' as GameState['currentStep'];
+
+    if (curHearts <= 0) {
+      newStep = 'GAME_OVER';
+      fullMsg = 'Ôi không! Hiệp sĩ đã hết tim rồi. Đừng buồn nhé, hãy ôn lại và quay lại sau!';
+    } else if (isCorrect && nextIdx >= state.totalQuestions) {
+      newStep = 'WIN';
+      fullMsg = `Tuyệt vời! Hiệp sĩ đã hoàn thành tất cả ${state.totalQuestions} câu thử thách! Hiệp sĩ thật giỏi!`;
+    } else if (isCorrect) {
+      const nextQ = state.questions[nextIdx];
+      const praises = [
+        'Tuyệt vời! Đúng rồi! Chúc mừng Hiệp sĩ!',
+        'Giỏi lắm Hiệp sĩ! Chúc mừng!',
+        'Chính xác! Hiệp sĩ thông minh quá!',
+        'Xuất sắc! Chúc mừng Hiệp sĩ!',
+        'Đúng rồi! Hiệp sĩ giỏi quá!'
+      ];
+      praiseMsg = praises[Math.floor(Math.random() * praises.length)];
+      questionMsg = nextQ.story;
+      fullMsg = `${praiseMsg} Tiếp theo nào! ${questionMsg}`;
+    } else {
+      const hints = ['Thử tính lại nhé!', 'Gần đúng rồi, cố lên!', 'Hãy đếm lại cẩn thận nào!', 'Hiệp sĩ thử lần nữa nhé!'];
+      const hint = hints[Math.floor(Math.random() * hints.length)];
+      fullMsg = `Chưa đúng rồi! ${hint} ${currentQ.story}`;
+    }
+
+    // ── Cập nhật state ngay: user message + feedback animation ──
     setState(prev => {
       const newMessages = [...prev.messages, { role: 'user' as const, text: userText }];
       const newHearts = isCorrect ? prev.hearts : prev.hearts - 1;
       const newCorrect = isCorrect ? prev.correctCount + 1 : prev.correctCount;
-      // Sai → giữ nguyên câu hiện tại, Đúng → sang câu tiếp
-      const nextQIndex = isCorrect ? prev.currentQIndex + 1 : prev.currentQIndex;
+      const newQIndex = isCorrect ? prev.currentQIndex + 1 : prev.currentQIndex;
 
-      return { ...prev, messages: newMessages, inputText: '', hearts: Math.max(0, newHearts), correctCount: newCorrect, currentQIndex: nextQIndex, feedback: isCorrect ? 'correct' : 'wrong', isLoading: true };
+      return { ...prev, messages: newMessages, inputText: '', hearts: Math.max(0, newHearts), correctCount: newCorrect, currentQIndex: newQIndex, feedback: isCorrect ? 'correct' : 'wrong', isLoading: true };
     });
 
     playSound(isCorrect ? 'correct' : 'wrong');
 
+    // ── Sau 1.5s: hiển thị response + phát TTS ──
+    // fullMsg/praiseMsg/questionMsg đã được tính TRƯỚC → không bị lẫn câu hỏi
     setTimeout(async () => {
-      // Đọc state mới nhất từ ref (KHÔNG dùng setState callback)
-      const s = stateRef.current;
-      const nextIdx = s.currentQIndex;
-      let praiseMsg = '';
-      let questionMsg = '';
-      let fullMsg = '';
-      let newStep = 'PLAYING' as GameState['currentStep'];
+      setState(prev => {
+        const newMessages = [...prev.messages, { role: 'ai' as const, text: fullMsg }];
+        return { ...prev, currentStep: newStep, aiResponse: { message: fullMsg, currentQuestionIndex: nextIdx + 1 }, messages: newMessages, feedback: null, isLoading: false };
+      });
 
-      if (s.hearts <= 0) {
-        newStep = 'GAME_OVER';
-        fullMsg = 'Ôi không! Hiệp sĩ đã hết tim rồi. Đừng buồn nhé, hãy ôn lại và quay lại sau!';
-      } else if (isCorrect && nextIdx >= s.totalQuestions) {
-        newStep = 'WIN';
-        fullMsg = `Tuyệt vời! Hiệp sĩ đã hoàn thành tất cả ${s.totalQuestions} câu thử thách! Hiệp sĩ thật giỏi!`;
-      } else if (isCorrect) {
-        const nextQ = s.questions[nextIdx];
-        const praises = [
-          'Tuyệt vời! Đúng rồi! Chúc mừng Hiệp sĩ!',
-          'Giỏi lắm Hiệp sĩ! Chúc mừng!',
-          'Chính xác! Hiệp sĩ thông minh quá!',
-          'Xuất sắc! Chúc mừng Hiệp sĩ!',
-          'Đúng rồi! Hiệp sĩ giỏi quá!'
-        ];
-        praiseMsg = praises[Math.floor(Math.random() * praises.length)];
-        questionMsg = nextQ.story;
-        fullMsg = `${praiseMsg} Tiếp theo nào! ${questionMsg}`;
-      } else {
-        const hints = ['Thử tính lại nhé!', 'Gần đúng rồi, cố lên!', 'Hãy đếm lại cẩn thận nào!', 'Hiệp sĩ thử lần nữa nhé!'];
-        const hint = hints[Math.floor(Math.random() * hints.length)];
-        fullMsg = `Chưa đúng rồi! ${hint} ${currentQ.story}`;
-      }
-
-      // Cập nhật state 1 lần duy nhất
-      const newMessages = [...s.messages, { role: 'ai' as const, text: fullMsg }];
-      setState({ ...s, currentStep: newStep, aiResponse: { message: fullMsg, currentQuestionIndex: nextIdx + 1 }, messages: newMessages, feedback: null, isLoading: false });
-
-      // Phát TTS — chỉ chạy 1 lần, hoàn toàn ngoài setState
+      // Phát TTS
       if (newStep === 'WIN') {
         await playVictoryFanfare();
         playSpeech(fullMsg);

@@ -2,6 +2,11 @@
 // This replaces the Vite dev proxy in production
 
 export default async function handler(req, res) {
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     // Build Google Translate TTS URL

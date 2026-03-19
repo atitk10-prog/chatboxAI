@@ -171,7 +171,8 @@ export class VietnameseTTS {
 
                 const success = useMobile
                     ? await this.playChunkMobile(chunks[i], gen)
-                    : await this.playChunkPC(chunks[i], gen);
+                    : await this.playChunkPC(chunks[i], gen)
+                    || await this.playChunkMobile(chunks[i], gen); // Fallback nếu Google TTS lỗi
                 console.log(`  chunk ${i + 1}/${chunks.length}: ${success ? '✅' : '❌'}`);
 
                 if (i < chunks.length - 1 && !this.stopRequested && this.generation === gen) {

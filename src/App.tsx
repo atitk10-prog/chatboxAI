@@ -705,7 +705,7 @@ export default function App() {
         {/* ══════════ PLAYING SCREEN ══════════ */}
         {state.currentStep === 'PLAYING' && (
           <motion.div key="playing" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-4xl flex flex-col h-[90vh] space-y-4">
+            className="w-full max-w-4xl flex flex-col h-[90vh] md:h-[90vh] space-y-2 md:space-y-4">
 
             {/* Header Stats */}
             <div className="flex justify-between items-center glass-card px-6 py-3 border-2 border-white">
@@ -760,7 +760,7 @@ export default function App() {
 
             {/* Chat Area */}
             <div className="flex-1 glass-card p-4 flex flex-col relative overflow-hidden border-2 border-white shadow-inner">
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1" style={{ maxHeight: '45vh' }}>
+              <div className="flex-1 overflow-y-auto space-y-3 pr-1" style={{ maxHeight: 'calc(90vh - 220px)' }}>
                 {state.messages.map((msg, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'ai' && (
@@ -803,7 +803,7 @@ export default function App() {
                 <input type="text" value={state.inputText}
                   onChange={(e) => setState(prev => ({ ...prev, inputText: e.target.value }))}
                   onKeyDown={(e) => e.key === 'Enter' && handleUserMessage(state.inputText)}
-                  placeholder="Nhập đáp án số hoặc nói..." className="flex-1 bg-transparent px-4 py-3 outline-none font-semibold text-xl" disabled={state.isLoading} />
+                  placeholder="Nhập đáp án..." className="flex-1 bg-transparent px-3 py-2 md:px-4 md:py-3 outline-none font-semibold text-lg md:text-xl" disabled={state.isLoading} />
                 <button onClick={() => handleUserMessage(state.inputText)} disabled={!state.inputText.trim() || state.isLoading}
                   className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 transition disabled:opacity-50">
                   <Send className="w-6 h-6" />
@@ -812,11 +812,11 @@ export default function App() {
 
               {/* Numpad */}
               <div className="glass-card p-3 border-2 border-white shadow-lg">
-                <div className="grid grid-cols-6 gap-2">
+                <div className="grid grid-cols-6 gap-1 md:gap-2">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(n => (
                     <button key={n} onClick={() => setState(prev => ({ ...prev, inputText: prev.inputText + String(n) }))}
                       disabled={state.isLoading}
-                      className="bg-white/80 hover:bg-indigo-100 border-2 border-white/60 rounded-xl py-3 text-xl font-bold text-slate-800 transition hover:scale-105 active:scale-95 disabled:opacity-50">
+                      className="bg-white/80 hover:bg-indigo-100 border-2 border-white/60 rounded-xl py-2 md:py-3 text-lg md:text-xl font-bold text-slate-800 transition hover:scale-105 active:scale-95 disabled:opacity-50">
                       {n}
                     </button>
                   ))}

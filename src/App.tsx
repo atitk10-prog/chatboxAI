@@ -143,6 +143,7 @@ export default function App() {
   const recognitionRef = useRef<any>(null);
   const handleUserMessageRef = useRef<(text: string) => void>(() => { });
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const processingRef = useRef(false); // Guard chống gọi 2 lần
 
   // Luôn cập nhật stateRef theo state mới nhất
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -346,7 +347,8 @@ export default function App() {
   };
 
   const handleUserMessage = (text: string) => {
-    if (!text.trim() || state.isLoading) return;
+    if (!text.trim() || state.isLoading || processingRef.current) return;
+    processingRef.current = true; // Khóa ngay lập tức
     vietnameseTTS.stop(); // Stop any current TTS
     const userText = text.trim();
     const currentQ = state.questions[state.currentQIndex];
@@ -423,6 +425,7 @@ export default function App() {
       } else {
         playSpeech(fullMsg);
       }
+      processingRef.current = false; // Mở khóa sau khi xử lý xong
     }, 1500);
   };
 
